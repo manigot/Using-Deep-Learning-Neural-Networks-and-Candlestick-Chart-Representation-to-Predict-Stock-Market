@@ -22,7 +22,7 @@ import pandas as pd
 import datetime as dt
 from pandas_datareader import data, wb
 import os
-import fix_yahoo_finance as yf
+import yfinance as yf
 import time
 # fixed pandas_datareader can't download from yahoo finance
 yf.pdr_override()
@@ -86,9 +86,18 @@ def fetch_yahoo_data(ticker, start_date, end_date, fname, max_attempt, check_exi
         for attempt in range(max_attempt):
             time.sleep(2)
             try:
+                """
                 dat = data.get_data_yahoo(''.join("{}".format(
                     ticker)),  start=start_date, end=end_date)
                 dat.to_csv(fname)
+                """
+                df = pd.read_csv("/content/drive/MyDrive/btc1h.csv")
+                df['Date'] = pd.to_datetime(df['date'])
+                df = df.set_index(['Date'])
+                df = df.drop(["date"],axis=1)
+                df.rename(columns={"open":"Open","close":"Close","high":"High","low":"Low"},inplace=True)
+                df = df[(df.index >= start_date) & (df.index < end_date)]
+                df.to_csv(fname)
             except Exception as e:
                 if attempt < max_attempt - 1:
                     print('Attempt {}: {}'.format(attempt + 1, str(e)))
