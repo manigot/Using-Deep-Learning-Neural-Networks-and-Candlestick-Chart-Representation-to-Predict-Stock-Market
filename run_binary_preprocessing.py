@@ -11,10 +11,10 @@ formatters = {
 symbol = sys.argv[1]
 
 # set the time
-testing_start_date = "2017-01-01"
-testing_end_date = "2018-06-14"
-training_end_date = "2016-12-31"
-training_start_date = "2000-01-01"
+testing_start_date = "2023-01-01"
+testing_end_date = "2023-12-20"
+training_end_date = "2022-12-31"
+training_start_date = "2018-05-15"
 
 # how long the windows set
 windows_length = sys.argv[2]
