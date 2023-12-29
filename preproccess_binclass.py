@@ -98,7 +98,7 @@ def createLabel(fname, seq_len):
     df.reset_index(inplace=True)
     df['Date'] = df['Date'].map(mdates.date2num)
     for i in range(0, len(df)):
-        c = df.ix[i:i + int(seq_len), :]
+        c = df.loc[i:i + int(seq_len), :]
         starting = 0
         endvalue = 0
         label = ""
@@ -115,6 +115,10 @@ def createLabel(fname, seq_len):
                 label = 0
             with open("{}_label_{}.txt".format(filename[1][:-4], seq_len), 'a') as the_file:
                 the_file.write("{}-{},{}".format(filename[1][:-4], i, label))
+                the_file.write("\n")
+            with open("labels.txt",'a') as the_file:
+                pct = (endvalue - starting) / starting
+                the_file.write("{}-{},{}".format(filename[1][:-4].split("_")[1], i, "{0:.2f}".format(pct)))
                 the_file.write("\n")
     print("Create label finished.")
 
@@ -144,9 +148,9 @@ def ohlc2cs(fname, seq_len, dataset_type, dimension):
     for i in range(0, len(df)):
         # normal length - begin
         # candlestick ohlc normal
-        c = df.ix[i:i + int(seq_len) - 1, :]
+        c = df.loc[i:i + int(seq_len) - 1, :]
         # ohlc+volume
-        useVolume = True
+        useVolume = False
         if len(c) == int(seq_len):
             my_dpi = 96
             fig = plt.figure(figsize=(dimension / my_dpi,
