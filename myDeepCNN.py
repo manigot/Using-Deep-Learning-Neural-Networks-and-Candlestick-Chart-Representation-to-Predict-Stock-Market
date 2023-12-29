@@ -1,11 +1,12 @@
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
+#tf.disable_v2_behavior()
 import os
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
 sess = tf.Session(config=config)
-
+import pandas as pd
 import math
 import json
 import sys
@@ -13,12 +14,11 @@ import sys
 import keras
 from keras.layers import Input, Dense, Conv2D, MaxPooling2D, AveragePooling2D, ZeroPadding2D, Flatten, Activation, add
 from keras.layers import Dropout, Flatten
-from keras.layers.normalization import BatchNormalization
+from tensorflow.keras.layers import BatchNormalization, Layer, InputSpec
 from keras.models import Model, Sequential
 from keras import initializers
-from keras.engine import Layer, InputSpec
-from keras import backend as K
-from keras.utils import np_utils
+import tensorflow.keras.backend as K
+from keras.utils import to_categorical
 from keras.optimizers import *
 import numpy as np
 from sklearn.metrics import confusion_matrix
@@ -38,8 +38,8 @@ def build_dataset(data_directory, img_width):
     train_size = sample_count
     print("train size : {}".format(train_size))
     feature = X
-    label = np_utils.to_categorical(y, nb_classes)
-    return feature, label, nb_classes
+    #label = to_categorical(y, nb_classes)
+    return feature, y, nb_classes
 
 
 def build_model(SHAPE, nb_classes, bn_axis, seed=None):
@@ -49,29 +49,29 @@ def build_model(SHAPE, nb_classes, bn_axis, seed=None):
     input_layer = Input(shape=SHAPE)
 
     # Step 1
-    x = Conv2D(32, 3, 3, init='glorot_uniform',
-               border_mode='same', activation='relu')(input_layer)
+    x = Conv2D(32, 3, 3, kernel_initializer='glorot_uniform',
+               padding='same', activation='relu')(input_layer)
     # Step 2 - Pooling
     x = MaxPooling2D(pool_size=(2, 2))(x)
 
     # Step 1
-    x = Conv2D(48, 3, 3, init='glorot_uniform', border_mode='same',
+    x = Conv2D(48, 3, 3, kernel_initializer='glorot_uniform', padding='same',
                activation='relu')(x)
     # Step 2 - Pooling
     x = MaxPooling2D(pool_size=(2, 2))(x)
     x = Dropout(0.25)(x)
 
     # Step 1
-    x = Conv2D(64, 3, 3, init='glorot_uniform', border_mode='same',
+    x = Conv2D(64, 3, 3, kernel_initializer='glorot_uniform', padding='same',
                activation='relu')(x)
     # Step 2 - Pooling
-    x = MaxPooling2D(pool_size=(2, 2))(x)
+    x = MaxPooling2D(pool_size=(2, 2),padding='same')(x)
 
     # Step 1
-    x = Conv2D(96, 3, 3, init='glorot_uniform', border_mode='same',
+    x = Conv2D(96, 3, 3, kernel_initializer='glorot_uniform', padding='same',
                activation='relu')(x)
     # Step 2 - Pooling
-    x = MaxPooling2D(pool_size=(2, 2))(x)
+    x = MaxPooling2D(pool_size=(2, 2),padding='same')(x)
     x = Dropout(0.25)(x)
 
     # Step 3 - Flattening
@@ -79,11 +79,11 @@ def build_model(SHAPE, nb_classes, bn_axis, seed=None):
 
     # Step 4 - Full connection
 
-    x = Dense(output_dim=256, activation='relu')(x)
+    x = Dense(256, activation='relu')(x)
     # Dropout
     x = Dropout(0.5)(x)
 
-    x = Dense(output_dim=2, activation='softmax')(x)
+    x = Dense(1, activation='linear')(x)
 
     model = Model(input_layer, x)
 
@@ -115,7 +115,7 @@ def main():
     epochs = args.epochs
     batch_size = args.batch_size
     SHAPE = (img_width, img_height, channel)
-    bn_axis = 3 if K.image_dim_ordering() == 'tf' else 1
+    bn_axis = 3 if K.image_data_format() == 'tf' else 1
 
     data_directory = args.input
 
@@ -125,11 +125,11 @@ def main():
     X_test, Y_test, nb_classes = build_dataset(
         "{}/test".format(data_directory), args.dimension)
     print("number of classes : {}".format(nb_classes))
-
+    print(Y_test)
     model = build_model(SHAPE, nb_classes, bn_axis)
 
     model.compile(optimizer=Adam(lr=1.0e-4),
-                  loss='categorical_crossentropy', metrics=['accuracy'])
+                  loss='mean_absolute_error', metrics=['mean_absolute_error'])
 
     # Fit the model
     model.fit(X_train, Y_train, batch_size=batch_size, epochs=epochs)
@@ -139,10 +139,15 @@ def main():
         epochs, batch_size, data_directory.replace("/", "_")), overwrite=True)
     # del model  # deletes the existing model
     predicted = model.predict(X_test)
-    y_pred = np.argmax(predicted, axis=1)
-    Y_test = np.argmax(Y_test, axis=1)
-    cm = confusion_matrix(Y_test, y_pred)
-    report = classification_report(Y_test, y_pred)
+    #y_pred = np.argmax(predicted, axis=1)
+    #Y_test = np.argmax(Y_test, axis=1)
+    #cm = confusion_matrix(Y_test, y_pred)
+    #report = classification_report(Y_test, y_pred)
+    print(predicted)
+    print(Y_test)
+    df = pd.DataFrame({"true":Y_test,"pred":predicted.flatten()})
+    df.to_csv("result.csv",index=False)
+    """
     tn = cm[0][0]
     fn = cm[1][0]
     tp = cm[1][1]
@@ -187,7 +192,7 @@ def main():
     f_output.close()
     end_time = time.monotonic()
     print("Duration : {}".format(timedelta(seconds=end_time - start_time)))
-
+    """
 
 if __name__ == "__main__":
     main()
