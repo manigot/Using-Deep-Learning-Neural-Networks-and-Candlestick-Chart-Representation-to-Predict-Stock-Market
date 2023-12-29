@@ -2,12 +2,17 @@ import argparse
 import arrow
 import pandas as pd
 from pandas.tseries.offsets import BDay
+from pandas.tseries.offsets import Hour
+from datetime import datetime
 import numpy as np
 import datetime as dt
+from datetime import datetime
 from pandas_datareader import data, wb
 from keras.models import load_model
+import traceback
 import os
-import fix_yahoo_finance as yf
+import yfinance as yf
+import imageio
 import time
 import sys
 import dataset
@@ -28,18 +33,17 @@ def build_dataset(data_directory, img_width):
     return feature
 
 
-def fetch_yahoo_data(ticker, start_date, end_date, fname, max_attempt, check_exist):
+def fetch_yahoo_data(dat, fname, max_attempt, check_exist):
     if (os.path.exists(fname) == True) and check_exist:
         print("file exist")
     else:
-        # remove exist file
+        # remove exis-t file
         if os.path.exists(fname):
             os.remove(fname)
         for attempt in range(max_attempt):
             time.sleep(2)
             try:
-                dat = data.get_data_yahoo(''.join("{}".format(
-                    ticker)),  start=start_date, end=end_date)
+                
                 dat.to_csv(fname)
             except Exception as e:
                 if attempt < max_attempt - 1:
@@ -58,7 +62,7 @@ def ohlc2cs(fname, dimension):
     df.fillna(0)
     plt.style.use('dark_background')
     df.reset_index(inplace=True)
-    df['Date'] = df['Date'].map(mdates.date2num)
+    df['Date'] = df['Datetime'].map(mdates.date2num)
     my_dpi = 96
     fig = plt.figure(figsize=(dimension / my_dpi,
                               dimension / my_dpi), dpi=my_dpi)
@@ -75,6 +79,7 @@ def ohlc2cs(fname, dimension):
 
     # create the second axis for the volume bar-plot
     # Add a seconds axis for the volume overlay
+    """
     ax2 = ax1.twinx()
     # Plot the volume overlay
     bc = volume_overlay(ax2, df['Open'], df['Close'], df['Volume'],
@@ -86,14 +91,15 @@ def ohlc2cs(fname, dimension):
     ax2.xaxis.set_visible(False)
     ax2.yaxis.set_visible(False)
     ax2.axis('off')
+    """
     pngfile = "temp_class/{}.png".format(inout)
     fig.savefig(pngfile,  pad_inches=0, transparent=False)
     plt.close(fig)
     # normal length - end
     params = []
     params += ["-alpha", "off"]
-
-    subprocess.check_call(["convert", pngfile] + params + [pngfile])
+    
+    #subprocess.check_call(["convert", pngfile] + params + [pngfile])
     print("Converting olhc to candlestik finished.")
 
 
@@ -104,40 +110,61 @@ def main():
     dimension = sys.argv[3]
     model_name = sys.argv[4]
     period = sys.argv[5]
-    date_format = dt.date(int(end_date.split(
-        '-')[0]), int(end_date.split('-')[1]), int(end_date.split('-')[2]))
-    start_date = date_format - BDay(period)
     fileparam = end_date.replace("-", "_")
+    df = yf.download('BTC-USD',interval="1h", period="8d")
+    def create_groups(df):
+      groups = []
+      for i, row in df.iterrows():
+          end_time = i + pd.Timedelta(hours=9)
+          group = df.loc[i:end_time]
+          groups.append(group)
+      return groups
 
-    # get historical data
-    fetch_yahoo_data(ticker, start_date, end_date,
-                     "{}_{}.csv".format(ticker, fileparam), 10, False)
+    result = create_groups(df)
     passed = True
-    try:
-        # convert to candlestickchart
-        ohlc2cs("{}_{}.csv".format(ticker, fileparam), int(dimension))
-        pass
-    except Exception as e:
-        os.remove("{}_{}.csv".format(ticker, fileparam))
-        print("Error when download historical data, please re-run.")
-        passed = False
-        pass
-    if passed:
-        # prepare dataset
-        img = [scipy.misc.imread(
-            "temp_class/{}_{}.csv.png".format(ticker, fileparam))]
-        X_test = np.array(img).astype(np.float32)
-        # load model and predict
-        model = load_model(model_name)
-        predicted = model.predict(X_test)
-        print(predicted)
-        y_pred = np.argmax(predicted, axis=1)
-        print(y_pred)
-
-        # cleaning
-        os.remove("{}_{}.csv".format(ticker, fileparam))
-        os.remove("temp_class/{}_{}.csv.png".format(ticker, fileparam))
-
+    result_df = pd.DataFrame()
+    last_close = None
+    last_predict = None
+# Print each group
+    for i, group_df in enumerate(result):
+      if group_df.shape[0] == 10:
+        close = group_df.tail(1).Close[0]
+        date_time = group_df.head(1).index[0]
+        if i > 0:
+          pct = (close - last_close) / last_close
+          result_df = result_df.append({"datetime":date_time,"real":pct,"pred":last_predict}, ignore_index=True)
+        print(f"Group {i}:")
+        #print(group_df.tail(1).Close)
+        #print(group_df.tail(1).index)
+        print("------------------------")
+        last_close = group_df.tail(1).Close[0]
+        try:
+            # convert to candlestickchart      
+            fetch_yahoo_data(group_df,
+                            "{}_{}.csv".format(ticker, fileparam), 10, False)
+            ohlc2cs("{}_{}.csv".format(ticker, fileparam), int(dimension))
+            pass
+        except Exception as e:
+            tb = traceback.format_exc()
+            os.remove("{}_{}.csv".format(ticker, fileparam))
+            print("Error when download historical data, please re-run.")
+            passed = False
+            print(tb)
+            pass
+        if passed:
+            # prepare dataset
+            img = imageio.imread(
+                "temp_class/{}_{}.csv.png".format(ticker, fileparam))
+            img = img[:,:,:3]
+            X_test = np.array([img]).astype(np.float32)
+            # load model and predict
+            model = load_model(model_name)
+            last_predict = model.predict(X_test)
+            print(last_predict)
+            # cleaning
+            os.remove("{}_{}.csv".format(ticker, fileparam))
+            os.remove("temp_class/{}_{}.csv.png".format(ticker, fileparam))
+    result_df.to_csv("test_results.csv",index=False)
 
 if __name__ == '__main__':
     main()
